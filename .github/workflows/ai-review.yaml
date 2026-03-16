@@ -1,0 +1,153 @@
+name: AI Review
+
+on:
+  # Manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      review-command:
+        type: choice
+        default: "run"
+        options:
+          - run
+          - run-inline
+          - run-context
+          - run-summary
+          - run-inline-reply
+          - run-summary-reply
+          - clear-inline
+          - clear-summary
+        required: true
+        description: "Review command (mode)"
+
+      pull-request-number:
+        type: string
+        required: true
+        description: "Pull Request number to review"
+
+jobs:
+  ai-review:
+    name: Run AI Review
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Required: fetch full history so that git diff between base and head SHAs works correctly.
+          fetch-depth: 0
+
+      - name: Run AI Review
+        uses: Nikita-Filonov/ai-review@v0.59.0
+        env:
+          LLM__PROVIDER: "OPENAI"
+          LLM__META__MODEL: "gpt-4o"
+          LLM__META__MAX_TOKENS: "15000"
+          LLM__META__TEMPERATURE: "0.2"
+
+          LLM__HTTP_CLIENT__API_URL: "https://www.dmxapi.cn/v1"
+          LLM__HTTP_CLIENT__API_TOKEN: ${{ secrets.OPENAI_API_KEY }}
+
+          # Example for Gemini:
+          # LLM__HTTP_CLIENT__API_URL: "https://generativelanguage.googleapis.com"
+          # LLM__HTTP_CLIENT__API_TOKEN: "$GEMINI_API_KEY"
+
+      
+          # ===============================
+          # VCS (GitHub integration)
+          # ===============================
+          VCS__PROVIDER: "GITHUB"
+
+          # Context of the current pipeline (provided by GitHub Actions).
+          VCS__PIPELINE__OWNER: ${{ github.repository_owner }}
+          VCS__PIPELINE__REPO: ${{ github.event.repository.name }}
+          VCS__PIPELINE__PULL_NUMBER: ${{ inputs.pull-request-number }}
+
+          # GitHub API access.
+          VCS__HTTP_CLIENT__API_URL: "https://api.github.com"
+          VCS__HTTP_CLIENT__API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ===============================
+          # Core (execution settings)
+          # ===============================
+          # Limits the maximum number of concurrent async tasks
+          # (e.g., posting comments or calling LLMs).
+          # Helps avoid hitting API rate limits.
+          #
+          # Default: 7
+          #
+          # Example:
+          #   CORE__CONCURRENCY: 5
+          #
+          # Recommended range: 5–10 depending on model/API limits.
+          CORE__CONCURRENCY: 7
+
+          # ===============================
+          # Review options
+          # ===============================
+          # Available modes:
+          #   FULL_FILE_DIFF
+          #   FULL_FILE_CURRENT
+          #   FULL_FILE_PREVIOUS
+          #   ONLY_ADDED
+          #   ONLY_REMOVED
+          #   ADDED_AND_REMOVED
+          #   ONLY_ADDED_WITH_CONTEXT
+          #   ONLY_REMOVED_WITH_CONTEXT
+          #   ADDED_AND_REMOVED_WITH_CONTEXT
+          REVIEW__MODE: "FULL_FILE_DIFF"
+
+          # Dry-run mode:
+          # When enabled, the review runs fully but does NOT create
+          # any comments or replies in the VCS (GitHub / GitLab / Bitbucket / Gitea).
+          # Useful for local testing, CI preview, or validation runs.
+          # Example: REVIEW__DRY_RUN: "true"
+          # Default: "false"
+          REVIEW__DRY_RUN: "false"
+
+          # Tags used to mark AI-generated comments in PR.
+          REVIEW__INLINE_TAG: "#ai-review-inline"
+          REVIEW__INLINE_REPLY_TAG: "#ai-review-inline-reply"
+          REVIEW__SUMMARY_TAG: "#ai-review-summary"
+          REVIEW__SUMMARY_REPLY_TAG: "#ai-review-summary-reply"
+
+          # Context lines (only for *_WITH_CONTEXT modes).
+          REVIEW__CONTEXT_LINES: "10"
+
+          # Markers for changes in output.
+          REVIEW__REVIEW_ADDED_MARKER: " # added"
+          REVIEW__REVIEW_REMOVED_MARKER: " # removed"
+
+          # Optional filters:
+          # REVIEW__ALLOW_CHANGES: '["src/*", "lib/*"]'
+          # REVIEW__IGNORE_CHANGES: '["docs/*", "README.md"]'
+
+          # Optional limits for number of AI comments:
+          # REVIEW__MAX_INLINE_COMMENTS: "20"   # Max inline comments per file (default: unlimited)
+          # REVIEW__MAX_CONTEXT_COMMENTS: "50"  # Max context comments per PR (default: unlimited)
+
+          # Fallback inline comments to summary comments on failure.
+          # When disabled, failed inline comments are logged and skipped.
+          # Default: true
+          REVIEW__INLINE_COMMENT_FALLBACK: "true"
+
+          # ===============================
+          # Logger (optional)
+          # ===============================
+          LOGGER__LEVEL: "INFO"
+          LOGGER__FORMAT: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {extra[logger_name]} | {message}"
+
+          # ===============================
+          # Artifacts (optional)
+          # ===============================
+          ARTIFACTS__LLM_DIR: "./artifacts/llm"
+          ARTIFACTS__VCS_DIR: "./artifacts/vcs"
+          ARTIFACTS__LLM_ENABLED: "false"
+          ARTIFACTS__VCS_ENABLED: "false"
+
+        with:
+          review-command: ${{ inputs.review-command }}
+
