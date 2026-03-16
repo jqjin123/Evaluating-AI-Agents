@@ -5,10 +5,6 @@ import json
 import math
 
 
-def f(x, y):
-    return x + y
-
-
 class UserManager:
     def __init__(self, users: list):
         self.users = users
